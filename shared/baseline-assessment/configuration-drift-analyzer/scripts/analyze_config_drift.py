@@ -176,14 +176,15 @@ def auto_key(cols: list[str], ia: dict[str, int], ib: dict[str, int], ra: list[l
 
     Among the remaining columns, key-like names rank first, then file order (Oracle lists key columns first).
     """
-    if not ra or not rb:
+    sides = [(idx, rows) for idx, rows in ((ia, ra), (ib, rb)) if rows]  # a side with no rows cannot disprove a key
+    if not sides:
         return None
-    usable = [c for c in cols if all(column_values(ra, ia[c])) and all(column_values(rb, ib[c]))]
+    usable = [c for c in cols if all(all(column_values(rows, idx[c])) for idx, rows in sides)]
     parents = [c for c in usable if "." in c]
     others = sorted((c for c in usable if "." not in c), key=lambda c: (not has_key_hint(c), cols.index(c)))[:MAX_KEY_CANDIDATES]
 
     def unique(combo: tuple[str, ...]) -> bool:
-        for idx, rows in ((ia, ra), (ib, rb)):
+        for idx, rows in sides:
             seen = {tuple((r[idx[c]] if idx[c] < len(r) else "").strip() for c in combo) for r in rows}
             if len(seen) != len(rows):
                 return False
@@ -211,6 +212,24 @@ def short(value: str, redact: bool) -> str:
         return "<redacted>"
     value = value.replace("\n", " ")
     return value if len(value) <= 40 else value[:37] + "..."
+
+
+def diff_snippet(a: str, b: str, redact: bool, width: int = 40) -> tuple[str, str]:
+    """Shorten two values for display, centred on where they first differ."""
+    if redact:
+        return "<redacted>", "<redacted>"
+    a, b = a.replace("\n", " "), b.replace("\n", " ")
+    if len(a) <= width and len(b) <= width:
+        return a, b
+    i = 0
+    while i < min(len(a), len(b)) and a[i] == b[i]:
+        i += 1
+    start = max(0, i - 12)
+
+    def cut(v: str) -> str:
+        return ("..." if start > 0 else "") + v[start:start + width] + ("..." if start + width < len(v) else "")
+
+    return cut(a), cut(b)
 
 
 def diff_file(name: str, a: tuple[str, list[str], list[list[str]]], b: tuple[str, list[str], list[list[str]]],
@@ -314,10 +333,11 @@ def diff_file(name: str, a: tuple[str, list[str], list[list[str]]], b: tuple[str
                 va, vb = cell(ra, ia, ma[k], c), cell(rb, ib, mb[k], c)
                 if va != vb:
                     expected = file_expected or matches(exp_cols, c, f"{disp}:{c}")
-                    changes.append({"column": c, "baseline": short(va, sens[c]), "target": short(vb, sens[c]), "expected": expected})
+                    sa, sb = diff_snippet(va, vb, sens[c])
+                    changes.append({"column": c, "baseline": sa, "target": sb, "expected": expected})
                     info = col_changes.setdefault(c, {"count": 0, "expected": expected, "example": None})
                     info["count"] += 1
-                    info["example"] = info["example"] or f"{disp_key(k)}: {short(va, sens[c])} -> {short(vb, sens[c])}"
+                    info["example"] = info["example"] or f"{disp_key(k)}: {sa} -> {sb}"
                     stats["cells_expected" if expected else "cells_changed"] += 1
             if any(not c["expected"] for c in changes):
                 stats["changed"] += 1

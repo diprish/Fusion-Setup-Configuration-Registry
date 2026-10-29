@@ -28,7 +28,9 @@ baseline; B is the target.
 - Files are matched by name, case-insensitive, including any folder path inside the package.
 - Values are compared as trimmed strings. `1.0` and `1` are different; normalise in the export if that matters.
 - Key auto-detection follows how FSM CSV files are laid out. Columns named `PARENT.Column` are parent-key columns and form the start of the key. If those are not unique, up to three more columns are added, preferring key-like names (code, lang, seq, number, key, id, name, type), then file order, because Oracle lists key columns first. Verified on one real export only. Surrogate `*_ID` columns often differ between environments; pass `--key` when the business key is known.
+- When one side has no rows (for example a setup object that was empty in the baseline), the key is detected from the side that has rows.
 - Without a key, a changed row appears as one removed plus one added row.
+- Long values are shortened around the first point where baseline and target differ, so a change at the end of a long description stays visible.
 - Row-level detail is capped per file (`--max-detail`, default 200); counts are exact.
 
 ## Decision
