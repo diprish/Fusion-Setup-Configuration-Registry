@@ -7,8 +7,9 @@ baseline; B is the target.
 | --- | --- | --- |
 | PKG-001 | high (info if expected file) | CSV exists only in baseline |
 | PKG-002 | medium (info if expected file) | CSV exists only in target |
-| PKG-003 | medium | `ASM_SETUP_CSV_METADATA.xml` differs or is missing in one package |
+| PKG-003 | medium | Metadata XML missing in one package, or export release, exported object, or scope type differs |
 | PKG-004 | low | Member skipped (oversize, unsafe name, macOS junk) |
+| PKG-006 | info | Source environments differ (from metadata; expected when comparing two pods) |
 | COLS-001 | high | Baseline columns missing in target |
 | COLS-002 | high | Target columns missing in baseline |
 | COLS-003 | low | Common columns in a different order |
@@ -23,10 +24,10 @@ baseline; B is the target.
 
 ## Defaults and behaviour
 
-- Ignored columns by default: `CREATED_BY`, `CREATION_DATE`, `LAST_UPDATED_BY`, `LAST_UPDATE_DATE`, `LAST_UPDATE_LOGIN`, `OBJECT_VERSION_NUMBER`. Add more with `--ignore-col`.
+- Ignored columns by default, case-insensitive with optional underscores (`CREATED_BY` and `CreatedBy` both match): created by, creation date, last updated by, last update date, last update login, object version number. Add more with `--ignore-col`.
 - Files are matched by name, case-insensitive, including any folder path inside the package.
 - Values are compared as trimmed strings. `1.0` and `1` are different; normalise in the export if that matters.
-- Key auto-detection tries single columns, then pairs of the top eight candidates, preferring names containing code, name, number, key, type, then id. Surrogate `*_ID` columns often differ between environments, so a code or name key is usually safer; pass `--key` when known.
+- Key auto-detection follows how FSM CSV files are laid out. Columns named `PARENT.Column` are parent-key columns and form the start of the key. If those are not unique, up to three more columns are added, preferring key-like names (code, lang, seq, number, key, id, name, type), then file order, because Oracle lists key columns first. Verified on one real export only. Surrogate `*_ID` columns often differ between environments; pass `--key` when the business key is known.
 - Without a key, a changed row appears as one removed plus one added row.
 - Row-level detail is capped per file (`--max-detail`, default 200); counts are exact.
 
@@ -40,5 +41,5 @@ baseline; B is the target.
 
 - Package contents are untrusted input. Nothing is extracted to disk; ZIP members are read into memory with a size cap, and a member-count cap protects against archive bombs.
 - Absolute paths, `..` segments, `__MACOSX` entries, and `._` files are skipped.
-- The metadata XML is hashed after whitespace normalisation, not parsed.
+- Only release, exported object, scope type, and environment are read from the metadata XML, by regex. Process id, process name, dates, ESS request id, and the submitter are volatile or personal and are never read, so re-exporting the same pod does not look like drift.
 - Values in columns with sensitive-looking names are replaced by `<redacted>`. This is a heuristic, so treat packages and outputs as sensitive.

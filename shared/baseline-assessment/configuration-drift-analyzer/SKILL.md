@@ -159,5 +159,4 @@ Keep this skill pillar-agnostic: it compares CSV packages generically and holds 
 object-specific rules. Object-specific meaning of a difference belongs in the
 owning pillar skill. Add rules to `references/drift-rules.md` and the script
 together with a stable rule ID. Requires Python 3.10+ and the standard library only.
-The script assumes each CSV has a single header row; confirm this against a real
-export before relying on it for a new business object.
+Validated against one real FSM task export (Manage Change Statuses, release 11.13.26.07.0, 19 CSV files): one header row per file, UTF-8, parent-key columns named `PARENT.Column`, several files header-only. Other business objects are not yet verified; confirm before relying on it for them.

@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import io
 import json
 import re
@@ -31,12 +30,14 @@ DEFAULT_RELATIVE_DIR = Path("shared") / "baseline-assessment" / "configuration-d
 RESULT_NAME = "configuration-drift.json"
 REPORT_NAME = "configuration-drift-report.md"
 METADATA_MEMBER = "ASM_SETUP_CSV_METADATA.XML"
-DEFAULT_IGNORE = (r"^(CREATED_BY|CREATION_DATE|LAST_UPDATED_BY|LAST_UPDATE_DATE|LAST_UPDATE_LOGIN|OBJECT_VERSION_NUMBER)$",)
+DEFAULT_IGNORE = (r"^(created_?by|creation_?date|last_?updated?_?by|last_?update_?date|last_?update_?login|object_?version_?number)$",)
 SENSITIVE_HINTS = ("ssn", "tax_id", "taxid", "passport", "password", "secret", "token", "email", "phone",
                    "birth", "iban", "account_num", "bank", "salary", "address")
-KEY_HINTS = ("code", "name", "number", "key", "type", "id")  # earlier = preferred when auto-detecting keys
+KEY_HINTS = ("code", "lang", "seq", "number", "key", "id", "name", "type")  # columns containing these rank ahead of others
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2, "info": 3}
-MAX_PAIR_CANDIDATES = 8
+MAX_KEY_CANDIDATES = 8
+MAX_KEY_EXTRA_COLUMNS = 3
+MAX_META_CHUNKS = 5000
 
 
 class PackageError(Exception):
@@ -74,7 +75,7 @@ class Package:
         self.label = label
         self.source = source
         self.csvs: dict[str, tuple[str, list[str], list[list[str]]]] = {}  # UPPER name -> (name, header, rows)
-        self.metadata_hash: str | None = None
+        self.meta: dict[str, str] | None = None
         self.warnings: list[str] = []
         self.ignored_members = 0
 
@@ -89,11 +90,26 @@ def safe_member_name(name: str) -> str | None:
     return str(path)
 
 
+META_FIELDS = {"release": "ProcessRelease", "object": "ObjectShortName", "object_type": "ObjectType", "env": "ProcessEnv"}
+
+
+def extract_metadata(text: str) -> dict[str, str]:
+    """Pull only stable fields from the export metadata with a regex (no XML parser on untrusted input).
+
+    Process id/name/dates, ESS request id and the submitter are volatile or personal and are never read.
+    """
+    meta: dict[str, str] = {}
+    for key, tag in META_FIELDS.items():
+        match = re.search(rf"<{tag}>([^<]{{0,200}})</{tag}>", text)
+        if match:
+            meta[key] = match.group(1).strip()
+    return meta
+
+
 def absorb(pkg: Package, name: str, raw: bytes) -> None:
     base = PurePosixPath(name).name
     if base.upper() == METADATA_MEMBER:
-        text = re.sub(r">\s+<", "><", decode(raw).strip())
-        pkg.metadata_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        pkg.meta = extract_metadata(decode(raw))
     elif name.lower().endswith(".csv"):
         header, rows = parse_csv(decode(raw))
         pkg.csvs[name.upper()] = (name, header, rows)
@@ -146,12 +162,9 @@ def parse_keys(items: list[str]) -> dict[str, list[str]]:
     return keys
 
 
-def hint_rank(column: str) -> int:
+def has_key_hint(column: str) -> bool:
     lowered = column.lower()
-    for rank, hint in enumerate(KEY_HINTS):
-        if hint in lowered:
-            return rank
-    return len(KEY_HINTS)
+    return any(hint in lowered for hint in KEY_HINTS)
 
 
 def column_values(rows: list[list[str]], idx: int) -> list[str]:
@@ -159,15 +172,15 @@ def column_values(rows: list[list[str]], idx: int) -> list[str]:
 
 
 def auto_key(cols: list[str], ia: dict[str, int], ib: dict[str, int], ra: list[list[str]], rb: list[list[str]]) -> list[str] | None:
+    """Guess a row key. FSM child files carry parent-key columns named PARENT.Column; start from those.
+
+    Among the remaining columns, key-like names rank first, then file order (Oracle lists key columns first).
+    """
     if not ra or not rb:
         return None
-    cands = []
-    for c in cols:
-        va, vb = column_values(ra, ia[c]), column_values(rb, ib[c])
-        if all(va) and all(vb):
-            cands.append((hint_rank(c), cols.index(c), c))
-    cands.sort()
-    names = [c for _, _, c in cands]
+    usable = [c for c in cols if all(column_values(ra, ia[c])) and all(column_values(rb, ib[c]))]
+    parents = [c for c in usable if "." in c]
+    others = sorted((c for c in usable if "." not in c), key=lambda c: (not has_key_hint(c), cols.index(c)))[:MAX_KEY_CANDIDATES]
 
     def unique(combo: tuple[str, ...]) -> bool:
         for idx, rows in ((ia, ra), (ib, rb)):
@@ -176,12 +189,12 @@ def auto_key(cols: list[str], ia: dict[str, int], ib: dict[str, int], ra: list[l
                 return False
         return True
 
-    for c in names:
-        if unique((c,)):
-            return [c]
-    for combo in combinations(names[:MAX_PAIR_CANDIDATES], 2):
-        if unique(combo):
-            return list(combo)
+    if parents and unique(tuple(parents)):
+        return parents
+    for extra in range(1, MAX_KEY_EXTRA_COLUMNS + 1):
+        for combo in combinations(others, extra):
+            if unique(tuple(parents) + combo):
+                return parents + list(combo)
     return None
 
 
@@ -226,6 +239,11 @@ def diff_file(name: str, a: tuple[str, list[str], list[list[str]]], b: tuple[str
         add("low", "Common columns appear in a different order.", "header order differs",
             "Harmless for comparison; note it if the packages will be imported.", "COLS-003")
     ia = {h.upper(): i for i, h in enumerate(ha)}
+    original = {h.upper(): h for h in ha}
+
+    def key_label(cols: list[str]) -> str:
+        return "+".join(original.get(c, c) for c in cols)
+
     ib = {h.upper(): i for i, h in enumerate(hb)}
     compare_cols = [c for c in common if not matches(ignore, c)]
     ignored_cols = [c for c in common if matches(ignore, c)]
@@ -243,7 +261,7 @@ def diff_file(name: str, a: tuple[str, list[str], list[list[str]]], b: tuple[str
         key_cols = auto_key(compare_cols, ia, ib, ra, rb)
         if key_cols:
             key_mode = "auto"
-            add("info", "Row key was auto-detected.", "+".join(key_cols),
+            add("info", "Row key was auto-detected.", key_label(key_cols),
                 "Verify it is the business key; pass --key to pin it.", "KEYS-001")
         else:
             keyless = True
@@ -274,7 +292,7 @@ def diff_file(name: str, a: tuple[str, list[str], list[list[str]]], b: tuple[str
                 else:
                     out[k] = r
             if dups or nulls:
-                add("medium", f"{side} has duplicate or empty key values.", f"duplicates={dups}, empty={nulls}, key={'+'.join(key_cols)}",
+                add("medium", f"{side} has duplicate or empty key values.", f"duplicates={dups}, empty={nulls}, key={key_label(key_cols)}",
                     "First occurrence is compared; resolve duplicates in the export.", "KEYS-003")
             return out
 
@@ -324,7 +342,7 @@ def diff_file(name: str, a: tuple[str, list[str], list[list[str]]], b: tuple[str
             stats["added"] += n
             record({"type": "added", "key": short("|".join(row), False)})
 
-    if keyless:
+    if keyless and (ra or rb):
         add("medium" if (stats["removed"] or stats["added"]) and not file_expected else "info",
             "No unique key found; comparing whole rows.", f"{len(ra)} baseline rows, {len(rb)} target rows",
             "Changed rows show as one removed plus one added. Pass --key to enable cell-level diffs.", "KEYS-002")
@@ -338,7 +356,7 @@ def diff_file(name: str, a: tuple[str, list[str], list[list[str]]], b: tuple[str
         add(sev_added, "Rows in target are not in baseline." + suffix, f"{stats['added']} rows",
             "Extra configuration in the target; confirm it is intended.", "ROW-002")
 
-    summary = {"file": disp, "baseline_rows": len(ra), "target_rows": len(rb), "key": "+".join(key_cols) if key_cols else None,
+    summary = {"file": disp, "baseline_rows": len(ra), "target_rows": len(rb), "key": key_label(key_cols) if key_cols else None,
                "key_mode": key_mode, "ignored_columns": ignored_cols, "columns_removed": removed_cols,
                "columns_added": added_cols, **stats, "details": details, "details_expected_only": details_expected,
                "details_truncated": sum(stats[k] for k in ("removed", "added", "changed")) > len(details)}
@@ -358,10 +376,19 @@ def analyze(pa: Package, pb: Package, args: argparse.Namespace) -> tuple[list[di
     for pkg in (pa, pb):
         for w in pkg.warnings:
             pkg_finding("low", f"{pkg.label} package", "Member skipped while reading.", w, "Check the package contents.", "PKG-004")
-    if pa.metadata_hash != pb.metadata_hash:
-        state = "missing in " + (pb.label if pb.metadata_hash is None else pa.label) if None in (pa.metadata_hash, pb.metadata_hash) else "content differs"
-        pkg_finding("medium", "package metadata", "ASM_SETUP_CSV_METADATA.xml differs.", state,
-                    "Likely different release, offering, or export scope; confirm both packages are comparable.", "PKG-003")
+    if (pa.meta is None) != (pb.meta is None):
+        missing = pb.label if pb.meta is None else pa.label
+        pkg_finding("medium", "package metadata", "ASM_SETUP_CSV_METADATA.xml is missing in one package.", f"missing in {missing}",
+                    "Confirm both packages came from the same kind of export before trusting the comparison.", "PKG-003")
+    elif pa.meta is not None and pb.meta is not None:
+        for key, label in (("release", "Export release"), ("object", "Exported setup object"), ("object_type", "Export scope type")):
+            va, vb = pa.meta.get(key), pb.meta.get(key)
+            if va is not None and vb is not None and va != vb:
+                pkg_finding("medium", "package metadata", f"{label} differs.", f"{pa.label}={va}, {pb.label}={vb}",
+                            "Packages from different releases or scopes may not be comparable; schema differences can follow.", "PKG-003")
+        if pa.meta.get("env") and pb.meta.get("env") and pa.meta["env"] != pb.meta["env"]:
+            pkg_finding("info", "package metadata", "Source environments differ.", f"{pa.label}={pa.meta['env']}, {pb.label}={pb.meta['env']}",
+                        "Expected when comparing two environments; use expected-column patterns for environment-specific values.", "PKG-006")
     only_a = sorted(set(pa.csvs) - set(pb.csvs))
     only_b = sorted(set(pb.csvs) - set(pa.csvs))
     for n in only_a:
