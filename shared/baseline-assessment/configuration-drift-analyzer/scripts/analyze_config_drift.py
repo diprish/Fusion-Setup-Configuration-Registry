@@ -512,8 +512,8 @@ def main(argv: list[str] | None = None) -> int:
     for i, f in enumerate(findings, 1):
         f["id"] = f"CFG-{i:03d}"
     result = {"skill_id": SKILL_ID, "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-              "baseline": {"label": pa.label, "source": Path(args.baseline).name},
-              "target": {"label": pb.label, "source": Path(args.target).name},
+              "baseline": {"label": pa.label, "source": Path(args.baseline).name, "metadata": pa.meta or {}},
+              "target": {"label": pb.label, "source": Path(args.target).name, "metadata": pb.meta or {}},
               "decision": decision(findings), "files": files, "findings": findings,
               "redaction_note": "Values in sensitive-looking columns are never persisted."}
 
