@@ -83,6 +83,7 @@ class Job:
 
 
 class State:
+    allow_embed = False
     token = secrets.token_urlsafe(24)
     exporter: str | None = None
     port = 0
@@ -113,13 +114,17 @@ def catalog_tree() -> dict:
 
 
 def find_properties() -> list[str]:
-    found: list[Path] = []
-    base = ROOT / "project"
-    if base.is_dir():
+    sys.path.insert(0, str(ROOT / ce.PATHS_HELPER_DIR))
+    from fusion_skill_paths import PROJECTS_ROOT  # noqa: E402
+    bases = [PROJECTS_ROOT] + [Path(d) for d in os.environ.get("FSCR_PROPERTIES_DIRS", "").split(os.pathsep) if d]
+    found: set[str] = set()
+    for base in bases:
+        if not base.is_dir():
+            continue
         for p in base.rglob("*.properties"):
-            if len(p.relative_to(ROOT).parts) <= 6 and "exports" not in p.parts:
-                found.append(p)
-    return sorted(str(p) for p in found)[:50]
+            if len(p.relative_to(base).parts) <= 6 and "exports" not in p.parts:
+                found.add(str(p))
+    return sorted(found)[:50]
 
 
 def results_dir(project_id: str) -> Path:
@@ -199,7 +204,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-ancestors 'none'")
+        ancestors = "vscode-webview:" if State.allow_embed else "'none'"
+        self.send_header("Content-Security-Policy", f"default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; frame-ancestors {ancestors}")
         self.end_headers()
         self.wfile.write(body)
 
@@ -308,8 +314,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--port", type=int, default=0, help="Port on 127.0.0.1 (default: a free port)")
     p.add_argument("--no-browser", action="store_true", help="Print the URL but do not open a browser")
     p.add_argument("--exporter", help="Alternative exporter CLI (testing only)")
+    p.add_argument("--allow-embed", action="store_true", help="Allow the page to be shown inside a VS Code webview")
     args = p.parse_args(argv)
     State.exporter = args.exporter
+    State.allow_embed = args.allow_embed
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     State.port = server.server_address[1]
     url = f"http://127.0.0.1:{State.port}/?t={State.token}"

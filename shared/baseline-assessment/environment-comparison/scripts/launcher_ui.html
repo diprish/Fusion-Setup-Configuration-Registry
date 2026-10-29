@@ -179,7 +179,9 @@ function appendLog(lines) {
     const row = el('div'); let last = 0;
     for (const m of line.matchAll(/https?:\/\/[^\s"'<>]+/g)) {
       row.append(line.slice(last, m.index));
-      row.append(el('a', {href: m[0], target: '_blank', rel: 'noopener noreferrer', textContent: m[0]}));
+      const a = el('a', {href: m[0], target: '_blank', rel: 'noopener noreferrer', textContent: m[0]});
+      a.addEventListener('click', ev => { if (window.parent !== window) { ev.preventDefault(); window.parent.postMessage({source: 'fuisql-config-compare', type: 'open', url: m[0]}, '*'); } });
+      row.append(a);
       last = m.index + m[0].length;
     }
     row.append(line.slice(last)); log.append(row);

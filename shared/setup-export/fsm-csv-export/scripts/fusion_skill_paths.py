@@ -19,7 +19,8 @@ FUSION_SKILLS_ROOT = REPO_ROOT
 AUTH_SCRIPTS_PATH = FUSION_SKILLS_ROOT / "core" / "auth" / "fusion-oauth-authentication" / "scripts"
 PROJECT_MGMT_SCRIPTS_PATH = FUSION_SKILLS_ROOT / "core" / "project-mgmt" / "scripts"
 DEFAULT_PROPERTIES_PATH = FUSION_SKILLS_ROOT / "core" / "auth" / "fusionEnv.properties"
-PROJECTS_ROOT = FUSION_SKILLS_ROOT / "project"
+# FSCR_PROJECTS_ROOT lets a packaged install keep project workspaces outside the read-only code folder.
+PROJECTS_ROOT = Path(os.environ["FSCR_PROJECTS_ROOT"]).expanduser() if os.environ.get("FSCR_PROJECTS_ROOT") else FUSION_SKILLS_ROOT / "project"
 
 
 def resolve_project_id(explicit_project_id: str | None = None) -> str:
