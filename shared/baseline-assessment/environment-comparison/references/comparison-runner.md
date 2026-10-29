@@ -27,3 +27,7 @@ Exports are reused when a valid ZIP exists for that task and environment. A reru
 ## Redaction
 
 Persisted logs and failure reasons replace URL hosts and query strings, bearer tokens, `access_token`/`refresh_token`/`code`/`state`/`code_challenge` values, and JWT-shaped strings. This is pattern based and not a guarantee.
+
+## Launcher page
+
+`scripts/launcher.py` serves `scripts/launcher_ui.html` on 127.0.0.1 and runs `compare_environments.py` as a subprocess with an argument list (no shell). Endpoints need the session token header; the Host header must be loopback; POST bodies must be JSON; task codes, labels, project ids and regexes are validated; result files are served only from the roll-up folder and only as `.md`, `.json`, or `.log`. Progress is polled from the runner's output, shown unredacted in your own browser so the sign-in link works. Values from exports are inserted into the page as text, never as HTML.

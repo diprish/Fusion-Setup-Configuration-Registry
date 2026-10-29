@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Environment Comparison</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1c2330;--mute:#5d6778;--line:#dfe3ea;--acc:#1f5fd1;--acc-ink:#fff;--ok:#18794e;--warn:#9a6700;--bad:#b42318;--okbg:#e6f4ec;--warnbg:#fdf3d8;--badbg:#fde8e6;--code:#eef0f4}
+@media(prefers-color-scheme:dark){:root{--bg:#12151b;--card:#1b2029;--ink:#e6e9ef;--mute:#9aa4b5;--line:#2c3340;--acc:#6ea0ff;--acc-ink:#0c1220;--ok:#5fcf9a;--warn:#e5b94a;--bad:#ff8a80;--okbg:#14301f;--warnbg:#33290f;--badbg:#3a1815;--code:#232a35}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:1040px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:0 0 12px}
+.sub{color:var(--mute);margin:0 0 20px}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:720px){.grid{grid-template-columns:1fr}}
+label{display:block;font-size:13px;color:var(--mute);margin:10px 0 4px}
+input[type=text],select,textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit}
+textarea{min-height:64px;font-family:ui-monospace,Menlo,monospace;font-size:13px}
+button{font:inherit;padding:8px 14px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+button.primary{background:var(--acc);color:var(--acc-ink);border-color:var(--acc)}
+button:disabled{opacity:.5;cursor:not-allowed}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.tasks{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:6px;margin-top:8px}
+.task{display:flex;gap:8px;padding:5px 10px;border-bottom:1px solid var(--line);align-items:flex-start}
+.task:last-child{border:0}.task code{font-size:12px}.task.off{opacity:.5}
+code,pre{font-family:ui-monospace,Menlo,monospace}
+pre.log{background:var(--code);border-radius:6px;padding:10px;max-height:320px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-all;margin:8px 0 0}
+.chip{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600}
+.ok{background:var(--okbg);color:var(--ok)}.warn{background:var(--warnbg);color:var(--warn)}.bad{background:var(--badbg);color:var(--bad)}.neutral{background:var(--code);color:var(--mute)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mute);font-weight:600;font-size:12px}
+details{margin:6px 0}summary{cursor:pointer}
+.diff{font-family:ui-monospace,Menlo,monospace;font-size:12px;margin:2px 0 2px 18px;color:var(--mute)}
+.hint{color:var(--mute);font-size:13px}.err{color:var(--bad)}
+a{color:var(--acc)}
+.banner{padding:10px 12px;border-radius:6px;margin:10px 0}
+dialog{max-width:900px;width:92%;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
+dialog::backdrop{background:#0008}
+</style>
+</head>
+<body>
+<main>
+  <h1>Environment Comparison</h1>
+  <p class="sub">Compare Oracle Fusion setup between two environments. Runs on this computer only. A plan never calls Fusion; running exports does, after you approve.</p>
+  <div id="stub" class="banner warn" hidden>Test mode: a stub exporter is in use; nothing talks to Fusion.</div>
+
+  <section>
+    <h2>1. Environments</h2>
+    <div class="grid">
+      <div><strong>Baseline</strong> <span class="hint">(the intended state)</span>
+        <label>Label</label><input type="text" id="bl" value="dev" autocomplete="off">
+        <label>Properties file</label><input type="text" id="bp" list="props" placeholder="/path/to/dev.properties" autocomplete="off"></div>
+      <div><strong>Target</strong> <span class="hint">(the environment being checked)</span>
+        <label>Label</label><input type="text" id="tl" value="test" autocomplete="off">
+        <label>Properties file</label><input type="text" id="tp" list="props" placeholder="/path/to/test.properties" autocomplete="off"></div>
+    </div>
+    <datalist id="props"></datalist>
+    <p class="hint">Each environment needs its own OAuth client and properties file. Sign-in happens in your browser when exports start; no password is entered here.</p>
+  </section>
+
+  <section>
+    <h2>2. Setup tasks</h2>
+    <div class="grid">
+      <div><label>Offering</label><select id="off"></select></div>
+      <div><label>Functional area</label><select id="fa"></select></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <input type="text" id="filter" placeholder="Filter tasks" style="max-width:260px">
+      <button id="selall" type="button">Select all exportable</button>
+      <button id="selnone" type="button">Clear</button>
+      <span class="hint" id="selcount"></span>
+    </div>
+    <div class="tasks" id="tasks"></div>
+    <label>Or add task codes (one per line, for tasks not listed)</label>
+    <textarea id="manual" placeholder="EGO_MANAGE_CHANGE_STATUSES"></textarea>
+  </section>
+
+  <section>
+    <h2>3. Options</h2>
+    <div class="grid">
+      <div><label>Project id</label><input type="text" id="proj" value="fscr-test" autocomplete="off"></div>
+      <div><label>Expected-to-differ columns (regex, one per line)</label><textarea id="exp" placeholder="URL|ENDPOINT"></textarea></div>
+    </div>
+    <label class="row" style="color:var(--ink)"><input type="checkbox" id="replace" checked> Replace the previous roll-up if there is one</label>
+    <label class="row" style="color:var(--ink)"><input type="checkbox" id="refresh"> Export again even if an export already exists</label>
+    <div class="row" style="margin-top:12px">
+      <button class="primary" id="plan" type="button">Preview plan</button>
+      <span class="hint">Lists which exports exist and which would be created. Does not call Fusion.</span>
+    </div>
+  </section>
+
+  <section id="runbox" hidden>
+    <h2>4. Run</h2>
+    <div id="runnote" class="hint"></div>
+    <label class="row" style="color:var(--ink)"><input type="checkbox" id="confirm"> I approve creating export processes in both environments (setup data is read, not changed).</label>
+    <div class="row" style="margin-top:8px">
+      <button class="primary" id="exec" type="button" disabled>Run exports and compare</button>
+      <button id="cancel" type="button" hidden>Cancel</button>
+      <span id="status" class="chip neutral" hidden></span>
+    </div>
+    <pre class="log" id="log" hidden></pre>
+  </section>
+
+  <section id="results" hidden>
+    <h2>Results</h2>
+    <div id="summary"></div>
+    <div id="tbl"></div>
+    <div id="notcmp"></div>
+  </section>
+</main>
+<dialog id="dlg"><div class="row" style="justify-content:space-between"><strong id="dlgt"></strong><button id="dlgc" type="button">Close</button></div><pre class="log" id="dlgb" style="max-height:70vh"></pre></dialog>
+
+<script>
+const TOKEN = new URLSearchParams(location.search).get('t') || '';
+const $ = id => document.getElementById(id);
+const el = (tag, props = {}, ...kids) => { const e = document.createElement(tag); Object.assign(e, props); kids.forEach(k => e.append(k)); return e; };
+const api = async (path, body) => {
+  const r = await fetch(path, body === undefined ? {headers: {'X-Launcher-Token': TOKEN}}
+    : {method: 'POST', headers: {'X-Launcher-Token': TOKEN, 'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+  return data;
+};
+const store = {get: k => { try { return localStorage.getItem('envcmp.' + k); } catch (e) { return null; } },
+               set: (k, v) => { try { localStorage.setItem('envcmp.' + k, v); } catch (e) {} }};
+['bl', 'bp', 'tl', 'tp', 'proj'].forEach(id => { const v = store.get(id); if (v) $(id).value = v; $(id).addEventListener('change', () => store.set(id, $(id).value)); });
+
+let catalog = [], selected = new Set(), lastPlanKey = '';
+
+function fillOfferings() {
+  const o = $('off'); o.replaceChildren(el('option', {value: '', textContent: '(choose an offering)'}));
+  catalog.forEach((x, i) => o.append(el('option', {value: i, textContent: x.name + ' (' + x.code + ')'})));
+}
+function fillAreas() {
+  const f = $('fa'); f.replaceChildren(el('option', {value: '', textContent: '(choose a functional area)'}));
+  const off = catalog[$('off').value]; if (!off) return renderTasks();
+  off.functionalAreas.forEach((x, i) => f.append(el('option', {value: i, textContent: x.name + ' (' + x.tasks.length + ')'})));
+  renderTasks();
+}
+function currentTasks() {
+  const off = catalog[$('off').value], fa = off && off.functionalAreas[$('fa').value];
+  return fa ? fa.tasks : [];
+}
+function renderTasks() {
+  const box = $('tasks'), q = $('filter').value.toLowerCase(), list = currentTasks();
+  box.replaceChildren();
+  if (!list.length) box.append(el('div', {className: 'task hint', textContent: 'Choose an offering and functional area, or add task codes below.'}));
+  list.filter(t => !q || t.code.toLowerCase().includes(q) || t.name.toLowerCase().includes(q)).forEach(t => {
+    const ok = t.csv !== 'no', cb = el('input', {type: 'checkbox', checked: selected.has(t.code), disabled: !ok});
+    cb.addEventListener('change', () => { cb.checked ? selected.add(t.code) : selected.delete(t.code); count(); });
+    const note = t.csv === 'no' ? ' (not exportable as CSV)' : t.csv === 'unknown' ? ' (CSV support unknown)' : '';
+    box.append(el('label', {className: 'task' + (ok ? '' : ' off'), style: 'margin:0;color:var(--ink)'}, cb, el('span', {}, t.name + note, el('br'), el('code', {textContent: t.code}))));
+  });
+  count();
+}
+function manualCodes() { return $('manual').value.split(/\s+/).map(s => s.trim().toUpperCase()).filter(Boolean); }
+function allTasks() { return [...new Set([...selected, ...manualCodes()])]; }
+function count() { $('selcount').textContent = allTasks().length + ' task(s) selected'; }
+$('off').addEventListener('change', fillAreas); $('fa').addEventListener('change', renderTasks);
+$('filter').addEventListener('input', renderTasks); $('manual').addEventListener('input', count);
+$('selall').addEventListener('click', () => { currentTasks().filter(t => t.csv !== 'no').forEach(t => selected.add(t.code)); renderTasks(); });
+$('selnone').addEventListener('click', () => { selected.clear(); renderTasks(); });
+
+function payload(mode) {
+  return {mode, confirm: mode === 'execute' && $('confirm').checked, project_id: $('proj').value.trim(),
+    baseline: {label: $('bl').value.trim(), properties: $('bp').value.trim()},
+    target: {label: $('tl').value.trim(), properties: $('tp').value.trim()},
+    tasks: allTasks(), expected_col: $('exp').value.split('\n').map(s => s.trim()).filter(Boolean),
+    replace: $('replace').checked, refresh: $('refresh').checked, allow_many: false};
+}
+const keyOf = p => JSON.stringify({...p, mode: '', confirm: false});
+
+function appendLog(lines) {
+  const log = $('log'); log.hidden = false;
+  lines.forEach(line => {
+    const row = el('div'); let last = 0;
+    for (const m of line.matchAll(/https?:\/\/[^\s"'<>]+/g)) {
+      row.append(line.slice(last, m.index));
+      row.append(el('a', {href: m[0], target: '_blank', rel: 'noopener noreferrer', textContent: m[0]}));
+      last = m.index + m[0].length;
+    }
+    row.append(line.slice(last)); log.append(row);
+  });
+  log.scrollTop = log.scrollHeight;
+}
+function setStatus(text, cls) { const s = $('status'); s.hidden = false; s.textContent = text; s.className = 'chip ' + cls; }
+
+let polling = false;
+async function startJob(mode) {
+  const p = payload(mode);
+  $('log').replaceChildren(); $('log').hidden = true; $('results').hidden = true;
+  let job;
+  try { job = await api('/api/run', p); } catch (e) { $('runbox').hidden = false; $('runnote').replaceChildren(el('span', {className: 'err', textContent: e.message})); return; }
+  $('runbox').hidden = false; $('cancel').hidden = false; $('exec').disabled = true; setStatus('running', 'warn');
+  polling = true; let from = 0;
+  while (polling) {
+    await new Promise(r => setTimeout(r, 700));
+    let s; try { s = await api('/api/job?id=' + job.id + '&from=' + from); } catch (e) { setStatus(e.message, 'bad'); break; }
+    from = s.next; appendLog(s.lines);
+    if (s.status !== 'running') {
+      polling = false; $('cancel').hidden = true;
+      const label = s.status === 'cancelled' ? 'cancelled' : ({0: 'finished', 1: 'finished: drift', 2: 'input error', 3: 'roll-up exists', 4: 'incomplete'})[s.rc] || ('exit ' + s.rc);
+      setStatus(label, s.rc === 0 || s.rc === 1 ? 'ok' : 'bad');
+      if (mode === 'plan') { lastPlanKey = keyOf(p); $('runnote').textContent = s.rc === 0 ? 'Review the plan above. If it looks right, approve and run.' : 'Fix the issue shown above and preview again.'; }
+      updateExec();
+      if (s.rc === 0 || s.rc === 1 || s.rc === 4) loadResult(p.project_id);
+    }
+  }
+}
+function updateExec() { $('exec').disabled = !($('confirm').checked && lastPlanKey && lastPlanKey === keyOf(payload('plan')) && !polling); }
+['confirm', 'bl', 'bp', 'tl', 'tp', 'proj', 'exp', 'manual', 'replace', 'refresh'].forEach(id => $(id).addEventListener('input', updateExec));
+['confirm'].forEach(id => $(id).addEventListener('change', updateExec));
+$('plan').addEventListener('click', () => { lastPlanKey = ''; $('confirm').checked = false; $('runnote').textContent = ''; startJob('plan'); });
+$('exec').addEventListener('click', () => startJob('execute'));
+$('cancel').addEventListener('click', () => api('/api/cancel', {}));
+
+function chipFor(decision) {
+  const map = {'drift detected': 'bad', 'expected differences only': 'warn', 'no differences': 'ok'};
+  return el('span', {className: 'chip ' + (map[decision] || 'neutral'), textContent: decision || 'not compared'});
+}
+async function showFile(project, rel, title) {
+  try {
+    const r = await fetch('/api/file?project_id=' + encodeURIComponent(project) + '&rel=' + encodeURIComponent(rel), {headers: {'X-Launcher-Token': TOKEN}});
+    $('dlgb').textContent = await r.text(); $('dlgt').textContent = title; $('dlg').showModal();
+  } catch (e) { alert(e.message); }
+}
+$('dlgc').addEventListener('click', () => $('dlg').close());
+
+async function loadResult(project) {
+  let d; try { d = await api('/api/result?project_id=' + encodeURIComponent(project)); } catch (e) { return; }
+  $('results').hidden = false;
+  const sum = $('summary'); sum.replaceChildren(
+    el('div', {className: 'row'}, chipFor(d.decision), d.complete ? el('span', {className: 'chip ok', textContent: 'complete'}) : el('span', {className: 'chip bad', textContent: 'incomplete'}),
+      el('span', {className: 'hint', textContent: `${d.counts.compared} of ${d.counts.total} tasks compared · ${d.baseline.label} vs ${d.target.label}`})));
+  const ra = d.releases.baseline.join(', '), rb = d.releases.target.join(', ');
+  if (ra || rb) sum.append(el('div', {className: 'banner ' + (ra && rb && ra !== rb ? 'bad' : 'neutral'), textContent: `Release: ${d.baseline.label} ${ra || 'unknown'} · ${d.target.label} ${rb || 'unknown'}` + (ra && rb && ra !== rb ? ' (releases differ; row comparisons may not be reliable)' : '')}));
+  const t = el('table'); t.append(el('thead', {}, el('tr', {}, ...['Task', d.baseline.label + ' export', d.target.label + ' export', 'Result', 'Findings', ''].map(h => el('th', {textContent: h})))));
+  const tb = el('tbody');
+  d.tasks.forEach(k => {
+    const sev = Object.entries(k.severity || {}).map(([a, b]) => a + ': ' + b).join(', ') || (k.status === 'compared' ? '-' : '');
+    const detail = el('td'); if (k.report) detail.append(el('a', {href: '#', textContent: 'drift report'}));
+    if (k.report) detail.firstChild.addEventListener('click', ev => { ev.preventDefault(); showFile(project, k.report, k.code); });
+    tb.append(el('tr', {}, el('td', {}, el('code', {textContent: k.code}), el('br'), el('span', {className: 'hint', textContent: k.name})),
+      el('td', {textContent: k.exports.baseline.summary}), el('td', {textContent: k.exports.target.summary}),
+      el('td', {}, k.status === 'compared' ? chipFor(k.decision) : el('span', {className: 'chip bad', textContent: 'not compared'})), el('td', {textContent: sev}), detail));
+  });
+  t.append(tb); $('tbl').replaceChildren(t);
+  const diffs = d.tasks.filter(k => k.differing_files && k.differing_files.length);
+  const nc = $('notcmp'); nc.replaceChildren();
+  if (diffs.length) nc.append(el('h2', {textContent: 'What differs', style: 'margin-top:18px'}));
+  diffs.forEach(k => {
+    const det = el('details', {open: diffs.length <= 3}, el('summary', {textContent: k.code + (k.name ? ' - ' + k.name : '')}));
+    k.differing_files.forEach(f => {
+      if (f.note) { det.append(el('div', {textContent: f.file + ': ' + f.note})); return; }
+      const bits = [f.added && ('+' + f.added + ' added'), f.removed && ('-' + f.removed + ' removed'), f.changed && (f.changed + ' changed'), f.changed_expected && (f.changed_expected + ' expected-only'), ((f.columns_added||[]).length || (f.columns_removed||[]).length) && 'columns differ'].filter(Boolean).join(', ');
+      det.append(el('div', {}, el('code', {textContent: f.file}), ' ' + bits));
+      f.details.forEach(x => det.append(el('div', {className: 'diff', textContent: x.type === 'changed' ? `changed ${x.key}: ${x.changes[0].column}: ${x.changes[0].baseline} -> ${x.changes[0].target}` : `${x.type} ${x.key}`})));
+    });
+    nc.append(det);
+  });
+  const bad = d.tasks.filter(k => k.status !== 'compared');
+  if (bad.length) {
+    nc.append(el('h2', {textContent: 'Not compared', style: 'margin-top:18px'}));
+    bad.forEach(k => ['baseline', 'target'].forEach(s => { const x = k.exports[s]; if (['failed', 'timeout', 'missing', 'skipped'].includes(x.status))
+      nc.append(el('div', {}, el('code', {textContent: k.code}), ` ${d[s].label}: ${x.failure_class || x.status}`, el('div', {className: 'diff', textContent: x.reason || ''}))); }));
+    nc.append(el('p', {className: 'hint', textContent: 'Fix the cause, then run again with "Replace" ticked. Finished exports are reused; only the failed ones are retried.'}));
+  }
+}
+
+(async () => {
+  try {
+    const init = await api('/api/init');
+    catalog = init.catalog.offerings; fillOfferings(); fillAreas(); $('stub').hidden = !init.stubExporter;
+    const dl = $('props'); init.properties.forEach(p => dl.append(el('option', {value: p})));
+    if (!init.catalog.available) $('tasks').replaceChildren(el('div', {className: 'task hint', textContent: 'Task catalog not found; add task codes below.'}));
+  } catch (e) { document.body.prepend(el('div', {className: 'banner bad', textContent: e.message})); }
+})();
+</script>
+</body>
+</html>

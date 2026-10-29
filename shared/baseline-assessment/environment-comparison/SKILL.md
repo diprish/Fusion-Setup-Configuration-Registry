@@ -121,6 +121,14 @@ python3 shared/baseline-assessment/environment-comparison/scripts/compare_enviro
   --project-id my-project
 ```
 
+   For a point-and-click alternative, start the local launcher page instead. It wraps this runner, keeps the same plan-then-approve gate, and shows progress and results in a browser:
+
+```bash
+python3 shared/baseline-assessment/environment-comparison/scripts/launcher.py
+```
+
+   It listens on 127.0.0.1 only, requires a per-session token (printed in the URL it opens), and refuses requests whose Host header is not the loopback address. Execution needs an explicit approval checkbox, and only after a plan of the same selection. One run at a time.
+
 4. Show the plan and get the user's approval, then add `--execute`. This creates exports in both environments; sign-in happens in the user's browser, once per environment. Stream the output; do not hide the sign-in URL.
 5. If the run is incomplete (exit 4), report which tasks failed and why. Rerun with `--replace --execute`: completed exports are reused, so only the missing ones are retried. Use `--refresh` to force new exports.
 6. Read the JSON and the per-task reports. Auto-detected keys (`KEYS-001`) are heuristics; verify them before trusting cell-level conclusions.
@@ -159,4 +167,4 @@ Exit codes: 0 done; 1 drift with `--fail-on-drift` (only when complete); 2 input
 
 ## Implementation Notes
 
-Keep this skill pillar-agnostic and free of Fusion transport. Object-specific meaning of a difference belongs in the owning pillar skill. Requires Python 3.10+ and the standard library only. The runner was tested offline with a stub exporter and a real before/after pair of one task export; it has not been run against two live pods, and only one business object has been verified.
+Keep this skill pillar-agnostic and free of Fusion transport. Object-specific meaning of a difference belongs in the owning pillar skill. Requires Python 3.10+ and the standard library only. The runner and launcher were tested offline with a stub exporter and a real before/after pair of one task export; it has not been run against two live pods, and only one business object has been verified.
