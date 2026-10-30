@@ -417,6 +417,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--functional-area", help="Functional area short name or exact name")
     p.add_argument("--max-tasks", type=int, default=None, help=f"Refuse larger selections (default {DEFAULT_MAX_TASKS})")
     p.add_argument("--allow-many", action="store_true", help="Allow more than --max-tasks tasks")
+    p.add_argument("--plan-json", action="store_true", help="Print the plan as one 'PLAN_JSON {...}' line and stop; never exports or writes (for tools)")
     p.add_argument("--execute", action="store_true", help="Approval gate: allow creating Fusion export processes for missing exports")
     p.add_argument("--refresh", action="store_true", help="With --execute, export again even if an export exists")
     p.add_argument("--wait-seconds", type=int, default=300, help="Passed to the exporter (polling window per export)")
@@ -537,6 +538,15 @@ def run(args: argparse.Namespace) -> int:
     print("  legend: R = existing export will be reused, - = no export yet (order: baseline, target)")
     for w in warnings:
         print(f"  note: {w}")
+    if args.plan_json:
+        plan = {"baseline": {"label": la, "environment": props_a["environment"]}, "target": {"label": lb, "environment": props_b["environment"]},
+                "tasks": [{"code": t["code"], "name": t["name"], "catalog": t["catalog"],
+                           "baseline": "reuse" if existing[(t["code"], "baseline")] else "create",
+                           "target": "reuse" if existing[(t["code"], "target")] else "create"} for t in selected],
+                "counts": {"tasks": len(selected), "toCreate": len(missing), "available": len(selected) * 2 - len(missing)},
+                "warnings": warnings, "skippedUnsupported": len(skipped), "maxTasks": cap}
+        print("PLAN_JSON " + json.dumps(plan))
+        return EXIT_OK
     if missing and not args.execute:
         print("\nPlan only: nothing was exported and nothing was written.")
         print("Re-run with --execute to create the missing exports. That creates one export process per missing task per environment "

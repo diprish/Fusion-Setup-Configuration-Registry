@@ -31,3 +31,7 @@ Persisted logs and failure reasons replace URL hosts and query strings, bearer t
 ## Launcher page
 
 `scripts/launcher.py` serves `scripts/launcher_ui.html` on 127.0.0.1 and runs `compare_environments.py` as a subprocess with an argument list (no shell). Endpoints need the session token header; the Host header must be loopback; POST bodies must be JSON; task codes, labels, project ids and regexes are validated; result files are served only from the roll-up folder and only as `.md`, `.json`, or `.log`. Progress is polled from the runner's output, shown unredacted in your own browser so the sign-in link works. Values from exports are inserted into the page as text, never as HTML.
+
+## Plan as data
+
+`--plan-json` prints one `PLAN_JSON {...}` line (environments, per-task export state `reuse` or `create`, counts, warnings, task cap) and stops. It never exports or writes, even when every export already exists. The launcher accepts `"plan_json": true` with `mode: "plan"` for the same. Tools such as the VS Code extension use it to show a plan without parsing text.

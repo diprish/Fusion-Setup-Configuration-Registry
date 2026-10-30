@@ -178,6 +178,8 @@ def build_command(body: dict) -> tuple[list[str], str]:
                 cmd += [flag, v]
     if body.get("replace"):
         cmd.append("--replace")
+    if mode == "plan" and body.get("plan_json"):
+        cmd.append("--plan-json")
     if mode == "execute":
         cmd.append("--execute")
         if body.get("refresh"):
