@@ -524,7 +524,7 @@ def run(args: argparse.Namespace) -> int:
     def export_dir(side: str, code: str) -> Path:
         return exports_root / sides[side][0] / code
 
-    existing = {(t["code"], s): (None if args.refresh and args.execute else find_zip(export_dir(s, t["code"])))
+    existing = {(t["code"], s): (None if args.refresh and (args.execute or args.plan_json) else find_zip(export_dir(s, t["code"])))
                 for t in selected for s in sides}
     missing = [(t["code"], s) for t in selected for s in sides if existing[(t["code"], s)] is None]
 
